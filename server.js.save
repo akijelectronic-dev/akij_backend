@@ -1,0 +1,236 @@
+// server.js
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// ========== ডেটা স্টোর (JSONBin.io এর মতো) ==========
+let dataStore = {
+  items: [
+    { code: 'M001', name: 'Motor 6V' },
+    { code: 'M002', name: 'Motor 12V' },
+    { code: 'B001', name: 'Battery 6V' },
+    { code: 'BS16', name: 'Blade Stand 16' }
+  ],
+  stock: {},
+  issues: [],
+  lastUpdated: new Date().toISOString()
+};
+
+// ========== API রাউট ==========
+
+// 1. সব ডেটা পাওয়া (GET)
+app.get('/api/data', (req, res) => {
+  res.json({
+    success: true,
+    data: dataStore,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 2. শুধু আইটেম পাওয়া (GET)
+app.get('/api/items', (req, res) => {
+  res.json({
+    success: true,
+    items: dataStore.items
+  });
+});
+
+// 3. শুধু স্টক পাওয়া (GET)
+app.get('/api/stock', (req, res) => {
+  res.json({
+    success: true,
+    stock: dataStore.stock
+  });
+});
+
+// 4. শুধু ইস্যু হিস্ট্রি পাওয়া (GET)
+app.get('/api/issues', (req, res) => {
+  res.json({
+    success: true,
+    issues: dataStore.issues
+  });
+});
+
+// 5. পুরো ডেটা আপডেট করা (PUT) - JSONBin.io এর মতো
+app.put('/api/data', (req, res) => {
+  try {
+    const { items, stock, issues } = req.body;
+    
+    if (items) dataStore.items = items;
+    if (stock) dataStore.stock = stock;
+    if (issues) dataStore.issues = issues;
+    
+    dataStore.lastUpdated = new Date().toISOString();
+    
+    res.json({
+      success: true,
+      message: 'Data updated successfully',
+      data: dataStore
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update data',
+      error: error.message
+    });
+  }
+});
+
+// 6. নতুন আইটেম যোগ করা (POST)
+app.post('/api/items', (req, res) => {
+  try {
+    const { code, name } = req.body;
+    
+    if (!code || !name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Code and name are required'
+      });
+    }
+    
+    // চেক করা: আগে থেকে আছে কিনা
+    if (dataStore.items.find(i => i.code === code)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item already exists'
+      });
+    }
+    
+    dataStore.items.push({ code, name });
+    dataStore.stock[code] = 0;
+    dataStore.lastUpdated = new Date().toISOString();
+    
+    res.json({
+      success: true,
+      message: 'Item added successfully',
+      item: { code, name }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add item',
+      error: error.message
+    });
+  }
+});
+
+// 7. স্টক আপডেট করা (PATCH)
+app.patch('/api/stock/:code', (req, res) => {
+  try {
+    const { code } = req.params;
+    const { quantity } = req.body;
+    
+    if (!dataStore.stock.hasOwnProperty(code)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found'
+      });
+    }
+    
+    let currentStock = dataStore.stock[code] || 0;
+    currentStock += quantity;
+    if (currentStock < 0) currentStock = 0;
+    
+    dataStore.stock[code] = currentStock;
+    dataStore.lastUpdated = new Date().toISOString();
+    
+    res.json({
+      success: true,
+      message: 'Stock updated',
+      stock: dataStore.stock
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update stock',
+      error: error.message
+    });
+  }
+});
+
+// 8. নতুন ইস্যু যোগ করা (POST)
+app.post('/api/issues', (req, res) => {
+  try {
+    const { name, item, qty } = req.body;
+    
+    if (!name || !item || !qty) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, item and quantity are required'
+      });
+    }
+    
+    dataStore.issues.push({
+      date: new Date().toLocaleString('bn-BD'),
+      name: name,
+      item: item,
+      qty: qty
+    });
+    
+    dataStore.lastUpdated = new Date().toISOString();
+    
+    res.json({
+      success: true,
+      message: 'Issue recorded successfully',
+      issue: { name, item, qty }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to record issue',
+      error: error.message
+    });
+  }
+});
+
+// 9. ডেটা রিসেট করা (DELETE)
+app.delete('/api/reset', (req, res) => {
+  try {
+    dataStore = {
+      items: [
+        { code: 'M001', name: 'Motor 6V' },
+        { code: 'M002', name: 'Motor 12V' },
+        { code: 'B001', name: 'Battery 6V' },
+        { code: 'BS16', name: 'Blade Stand 16' }
+      ],
+      stock: {},
+      issues: [],
+      lastUpdated: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      message: 'Data reset successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset data',
+      error: error.message
+    });
+  }
+});
+
+// ========== সার্ভার চালু করা ==========
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+  console.log(`📦 API Endpoints:`);
+  console.log(`  GET  /api/data     - Get all data`);
+  console.log(`  GET  /api/items    - Get items`);
+  console.log(`  GET  /api/stock    - Get stock`);
+  console.log(`  GET  /api/issues   - Get issues`);
+  console.log(`  PUT  /api/data     - Update all data`);
+  console.log(`  POST /api/items    - Add new item`);
+  console.log(`  PATCH /api/stock/:code - Update stock`);
+  console.log(`  POST /api/issues   - Add new issue`);
+  console.log(`  DELETE /api/reset  - Reset all data`);
+});
+node server.js
+
